@@ -7,6 +7,19 @@
 
 Native Swift + SwiftUI. Zero third-party dependencies. A single binary (~700 KB).
 
+## 📦 Download & Install
+
+[![Download latest](https://img.shields.io/badge/Download-latest-FF9F0A)](https://github.com/ARK-VALLEY/today-timeline/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/ARK-VALLEY/today-timeline/total)](https://github.com/ARK-VALLEY/today-timeline/releases)
+
+1. Download the latest `TodayTimeline-*.zip` from the [Releases page](https://github.com/ARK-VALLEY/today-timeline/releases);
+2. Unzip and drag 今日时间线 into `/Applications`, then open it;
+3. **First launch may be blocked** (the app is locally built and not notarized by Apple): right-click the app → Open → Open again; or run
+   `xattr -dr com.apple.quarantine /Applications/今日时间线.app`;
+4. Allow Calendar access on first launch.
+
+> Requirements: macOS 14+; Touch Bar features require a MacBook Pro with Touch Bar. Apple Silicon runs via Rosetta 2. You can also build it yourself: `./build.sh`.
+
 ## ✨ Features
 
 - **Menu bar**: icon + full event name + live countdown, in one line. Countdown color is configurable: light / dark / the event's calendar color.

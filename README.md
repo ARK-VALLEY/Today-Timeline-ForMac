@@ -7,6 +7,19 @@
 
 纯 Swift + SwiftUI 原生实现，零第三方依赖，单一二进制文件（约 700 KB）。
 
+## 📦 下载安装
+
+[![下载最新版](https://img.shields.io/badge/下载-最新版-FF9F0A)](https://github.com/ARK-VALLEY/today-timeline/releases/latest)
+[![下载量](https://img.shields.io/github/downloads/ARK-VALLEY/today-timeline/total)](https://github.com/ARK-VALLEY/today-timeline/releases)
+
+1. 前往 [Releases 页面](https://github.com/ARK-VALLEY/today-timeline/releases) 下载最新版 `TodayTimeline-*.zip`；
+2. 双击解压，把「今日时间线」拖入「应用程序」文件夹，打开即可；
+3. **首次打开若被系统拦截**（本应用为本地编译、未经 Apple 公证）：右键点应用 →「打开」→ 再点「打开」；或终端执行
+   `xattr -dr com.apple.quarantine /Applications/今日时间线.app`；
+4. 首次启动请允许「日历」访问权限。
+
+> 系统要求：macOS 14+；Touch Bar 功能需要带 Touch Bar 的 MacBook Pro。Apple Silicon 机型可通过 Rosetta 2 运行。也可以自行构建：`./build.sh`。
+
 ## ✨ 功能
 
 - **菜单栏**：一行显示「图标 + 日程名称全称 + 实时倒计时」；倒计时颜色可选浅色 / 深色 / 日程所属日历的颜色
