@@ -115,20 +115,35 @@ struct SettingsView: View {
                     }
 
                     section("日历筛选") {
-                        ForEach(model.calendars, id: \.calendarIdentifier) { cal in
-                            Toggle(isOn: Binding(
-                                get: { model.visibleCalendarIDs.contains(cal.calendarIdentifier) },
-                                set: { v in model.setVisible(cal, v) }
-                            )) {
+                        ForEach(model.calendarGroups) { group in
+                            VStack(alignment: .leading, spacing: 8) {
                                 HStack(spacing: 6) {
-                                    Circle()
-                                        .fill(Color(cgColor: cal.cgColor))
-                                        .frame(width: 8, height: 8)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(cal.title).font(.callout)
-                                        Text(cal.source?.title ?? "")
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
+                                    HStack(spacing: 3) {
+                                        Image(systemName: group.icon)
+                                            .font(.system(size: 8, weight: .semibold))
+                                        Text(group.typeLabel)
+                                    }
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.accentColor.opacity(0.14))
+                                    .foregroundStyle(Color.accentColor)
+                                    .clipShape(Capsule())
+                                    Text(group.title)
+                                        .font(.caption.weight(.semibold))
+                                    Spacer()
+                                }
+                                ForEach(group.calendars, id: \.calendarIdentifier) { cal in
+                                    Toggle(isOn: Binding(
+                                        get: { model.visibleCalendarIDs.contains(cal.calendarIdentifier) },
+                                        set: { v in model.setVisible(cal, v) }
+                                    )) {
+                                        HStack(spacing: 6) {
+                                            Circle()
+                                                .fill(Color(cgColor: cal.cgColor))
+                                                .frame(width: 8, height: 8)
+                                            Text(cal.title).font(.callout)
+                                        }
                                     }
                                 }
                             }
@@ -180,6 +195,7 @@ struct SettingsView: View {
                 .padding(14)
             }
             .frame(maxHeight: 520)
+            .onAppear { model.loadCalendars() }
         }
     }
 

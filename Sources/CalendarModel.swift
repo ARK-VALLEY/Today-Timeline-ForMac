@@ -16,12 +16,24 @@ struct TimelineEvent: Identifiable {
     let calendarName: String
 }
 
+/// 按账户来源分组的日历列表
+struct CalendarGroup: Identifiable {
+    let id: String          // 来源标识（账户）
+    let title: String       // 账户名称
+    let typeLabel: String   // 账户类型：iCloud / Google / Exchange…
+    let icon: String        // 类型图标（SF Symbol）
+    let calendars: [EKCalendar]
+}
+
 final class CalendarModel: ObservableObject {
     @Published var accessDetermined = false
     @Published var accessGranted = false
     @Published var events: [TimelineEvent] = []
     @Published var calendars: [EKCalendar] = []
+    @Published var calendarGroups: [CalendarGroup] = []
     @Published var visibleCalendarIDs: Set<String> = []
+    /// 用户显式关闭的日历（用「隐藏列表」而非「可见列表」，新增日历默认自动显示）
+    private var hiddenCalendarIDs: Set<String> = []
     @Published var reminderMinutes: Int = 10 {
         didSet {
             UserDefaults.standard.set(reminderMinutes, forKey: Keys.reminderMinutes)
@@ -41,6 +53,7 @@ final class CalendarModel: ObservableObject {
 
     enum Keys {
         static let visible = "visibleCalendarIDs"
+        static let hidden = "hiddenCalendarIDs"
         static let reminderMinutes = "reminderMinutes"
         static let menuBarMode = "menuBarMode"
         static let menuBarModeMigrated = "menuBarModeMigrated"
@@ -63,15 +76,21 @@ final class CalendarModel: ObservableObject {
         }
         countdownColorMode = UserDefaults.standard.object(forKey: Keys.countdownColorMode) as? Int ?? 0
 
-        // 每 60 秒自动刷新一次
+        // 每 60 秒自动刷新一次（同时重载账户列表，覆盖账户改名等变化）
         Timer.publish(every: 60, on: .main, in: .common).autoconnect()
-            .sink { [weak self] _ in self?.refresh() }
+            .sink { [weak self] _ in
+                self?.loadCalendars()
+                self?.refresh()
+            }
             .store(in: &cancellables)
 
-        // 日历发生变化（如在「日历」App 中增删日程）时自动刷新
+        // 日历数据库变化（增删日程、账户增删改名等）时立即重载列表并刷新
         NotificationCenter.default.publisher(for: .EKEventStoreChanged)
             .debounce(for: .seconds(1.5), scheduler: RunLoop.main)
-            .sink { [weak self] _ in self?.refresh() }
+            .sink { [weak self] _ in
+                self?.loadCalendars()
+                self?.refresh()
+            }
             .store(in: &cancellables)
 
         requestAccess()
@@ -103,26 +122,103 @@ final class CalendarModel: ObservableObject {
         }
     }
 
+    /// 重载日历账户列表（实时同步：账户增删、改名、新增日历都会反映在这里），
+    /// 并按账户来源分组（iCloud / Google / Exchange / 我的 Mac / 生日 / 订阅）。
     func loadCalendars() {
-        calendars = store.calendars(for: .event)
-            .sorted { ($0.source?.title ?? "") < ($1.source?.title ?? "") }
-        let ids = Set(calendars.map(\.calendarIdentifier))
-        if let saved = UserDefaults.standard.array(forKey: Keys.visible) as? [String] {
-            visibleCalendarIDs = Set(saved).intersection(ids)
-            if visibleCalendarIDs.isEmpty { visibleCalendarIDs = ids }
+        store.refreshSourcesIfNecessary()
+        let cals = store.calendars(for: .event)
+        calendars = cals
+        let ids = Set(cals.map(\.calendarIdentifier))
+
+        // 一次性迁移：旧的「可见列表」转成「隐藏列表」
+        if UserDefaults.standard.object(forKey: Keys.hidden) == nil,
+           let savedVisible = UserDefaults.standard.array(forKey: Keys.visible) as? [String] {
+            hiddenCalendarIDs = ids.subtracting(Set(savedVisible))
         } else {
-            visibleCalendarIDs = ids
+            hiddenCalendarIDs = Set(UserDefaults.standard.stringArray(forKey: Keys.hidden) ?? [])
         }
+        // 清理已不存在的日历 id；新增日历不在隐藏列表中 → 默认自动显示
+        hiddenCalendarIDs = hiddenCalendarIDs.intersection(ids)
+        persistHidden()
+        visibleCalendarIDs = ids.subtracting(hiddenCalendarIDs)
+
+        // 按来源（账户）分组
+        var bySource: [String: [EKCalendar]] = [:]
+        var sources: [EKSource] = []
+        var seenSources = Set<String>()
+        for cal in cals {
+            if let src = cal.source {
+                if !seenSources.contains(src.sourceIdentifier) {
+                    seenSources.insert(src.sourceIdentifier)
+                    sources.append(src)
+                }
+                bySource[src.sourceIdentifier, default: []].append(cal)
+            } else {
+                bySource["__none__", default: []].append(cal)
+            }
+        }
+        var groups: [CalendarGroup] = sources.map { src in
+            let info = typeInfo(for: src)
+            return CalendarGroup(
+                id: src.sourceIdentifier,
+                title: src.title,
+                typeLabel: info.label,
+                icon: info.icon,
+                calendars: (bySource[src.sourceIdentifier] ?? [])
+                    .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+            )
+        }
+        groups.sort {
+            if $0.typeLabel == $1.typeLabel {
+                return $0.title.localizedCompare($1.title) == .orderedAscending
+            }
+            return $0.typeLabel.localizedCompare($1.typeLabel) == .orderedAscending
+        }
+        if let extra = bySource["__none__"], !extra.isEmpty {
+            groups.append(CalendarGroup(id: "__none__", title: "其他", typeLabel: "其他", icon: "calendar", calendars: extra))
+        }
+        calendarGroups = groups
     }
 
     func setVisible(_ calendar: EKCalendar, _ on: Bool) {
         if on {
-            visibleCalendarIDs.insert(calendar.calendarIdentifier)
+            hiddenCalendarIDs.remove(calendar.calendarIdentifier)
         } else {
-            visibleCalendarIDs.remove(calendar.calendarIdentifier)
+            hiddenCalendarIDs.insert(calendar.calendarIdentifier)
         }
-        UserDefaults.standard.set(Array(visibleCalendarIDs), forKey: Keys.visible)
+        visibleCalendarIDs = Set(calendars.map(\.calendarIdentifier)).subtracting(hiddenCalendarIDs)
+        persistHidden()
         refresh()
+    }
+
+    /// 账户类型标签与图标（按来源类型 + 名称推断）
+    private func typeInfo(for source: EKSource) -> (label: String, icon: String) {
+        switch source.sourceType {
+        case .exchange:
+            return ("Exchange", "envelope.fill")
+        case .local:
+            return ("我的 Mac", "desktopcomputer")
+        case .birthdays:
+            return ("生日", "birthday.cake.fill")
+        case .subscribed:
+            return ("订阅", "link")
+        case .mobileMe:
+            return ("iCloud", "cloud.fill")
+        case .calDAV:
+            let t = source.title.lowercased()
+            if t.contains("icloud") { return ("iCloud", "cloud.fill") }
+            if t.contains("google") || t.contains("gmail") { return ("Google", "g.circle.fill") }
+            return ("CalDAV", "calendar")
+        default:
+            return ("其他", "calendar")
+        }
+    }
+
+    private func persistHidden() {
+        let existing = UserDefaults.standard.stringArray(forKey: Keys.hidden) ?? []
+        if Set(existing) != hiddenCalendarIDs {
+            UserDefaults.standard.set(Array(hiddenCalendarIDs), forKey: Keys.hidden)
+        }
     }
 
     func refresh() {
