@@ -191,16 +191,44 @@ final class CalendarModel: ObservableObject {
     }
 
     /// 在系统「日历」App 中打开某个日程
+    /// 部分系统未注册 x-apple-calendar / x-apple-calevent 协议，直接调用会弹出
+    /// 「未设定用来打开 URL 的应用程序」；因此先确认协议可用，再逐级回退：
+    /// 协议直达 → AppleScript 定位到日程所在日期 → 直接启动日历 App
     func openInCalendar(_ e: TimelineEvent) {
         if let id = e.event.eventIdentifier,
            let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed),
            let url = URL(string: "x-apple-calevent://" + encoded),
-           NSWorkspace.shared.open(url) {
+           NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+            NSWorkspace.shared.open(url)
             return
         }
-        if let url = URL(string: "x-apple-calendar://") {
-            NSWorkspace.shared.open(url)
+        if openCalendarViewing(e.start) { return }
+        openCalendarApp()
+    }
+
+    /// 用 AppleScript 让日历跳转到日程所在日期（用相对秒数，避免本地化日期解析问题）
+    private func openCalendarViewing(_ date: Date) -> Bool {
+        let delta = Int(date.timeIntervalSinceNow)
+        let script = "tell application \"Calendar\" to view calendar at ((current date) + \(delta))"
+        let task = Process()
+        task.launchPath = "/usr/bin/osascript"
+        task.arguments = ["-e", script]
+        task.standardOutput = FileHandle.nullDevice
+        task.standardError = FileHandle.nullDevice
+        do {
+            try task.run()
+            task.waitUntilExit()
+        } catch {
+            return false
         }
+        return task.terminationStatus == 0
+    }
+
+    /// 通过 bundle id 直接启动「日历」App
+    private func openCalendarApp() {
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") else { return }
+        let config = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.openApplication(at: appURL, configuration: config) { _, _ in }
     }
 
     private func rescheduleReminders() {
