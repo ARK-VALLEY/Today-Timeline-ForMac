@@ -190,23 +190,29 @@ final class CalendarModel: ObservableObject {
         return ""
     }
 
-    /// 在系统「日历」App 中打开某个日程
-    /// 部分系统未注册 x-apple-calendar / x-apple-calevent 协议，直接调用会弹出
-    /// 「未设定用来打开 URL 的应用程序」；因此先确认协议可用，再逐级回退：
-    /// 协议直达 → AppleScript 定位到日程所在日期 → 直接启动日历 App
+    /// 在系统「日历」App 中打开某个日程。
+    /// 全部操作在后台线程执行，绝不阻塞界面：
+    /// 协议直达 → 立即打开日历 App → 后台脚本尽力定位到日程日期（限时 8 秒）
     func openInCalendar(_ e: TimelineEvent) {
-        if let id = e.event.eventIdentifier,
-           let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed),
-           let url = URL(string: "x-apple-calevent://" + encoded),
-           NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
-            NSWorkspace.shared.open(url)
-            return
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            // 1) 系统注册了协议时，直达具体日程
+            if let id = e.event.eventIdentifier,
+               let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed),
+               let url = URL(string: "x-apple-calevent://" + encoded),
+               NSWorkspace.shared.urlForApplication(toOpen: url) != nil {
+                NSWorkspace.shared.open(url)
+                return
+            }
+            // 2) 立即打开「日历」App（非阻塞，界面立刻有响应）
+            self.openCalendarApp()
+            // 3) 后台尽力定位到日程所在日期（最多等 8 秒，失败不影响）
+            _ = self.openCalendarViewing(e.start)
         }
-        if openCalendarViewing(e.start) { return }
-        openCalendarApp()
     }
 
-    /// 用 AppleScript 让日历跳转到日程所在日期（用相对秒数，避免本地化日期解析问题）
+    /// 用 AppleScript 让日历跳转到日程所在日期。
+    /// 限时等待，防止日历冷启动 / 权限弹窗长时间拖住后台任务。
     private func openCalendarViewing(_ date: Date) -> Bool {
         let delta = Int(date.timeIntervalSinceNow)
         let script = "tell application \"Calendar\" to view calendar at ((current date) + \(delta))"
@@ -217,8 +223,15 @@ final class CalendarModel: ObservableObject {
         task.standardError = FileHandle.nullDevice
         do {
             try task.run()
-            task.waitUntilExit()
         } catch {
+            return false
+        }
+        let deadline = Date().addingTimeInterval(8)
+        while task.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if task.isRunning {
+            task.terminate()
             return false
         }
         return task.terminationStatus == 0
