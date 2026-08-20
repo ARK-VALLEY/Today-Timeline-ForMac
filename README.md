@@ -9,10 +9,10 @@
 
 ## 📦 下载安装
 
-[![下载最新版](https://img.shields.io/badge/下载-最新版-FF9F0A)](https://github.com/ARK-VALLEY/today-timeline/releases/latest)
-[![下载量](https://img.shields.io/github/downloads/ARK-VALLEY/today-timeline/total)](https://github.com/ARK-VALLEY/today-timeline/releases)
+[![下载最新版](https://img.shields.io/badge/下载-最新版-FF9F0A)](https://github.com/ARK-VALLEY/Today-Timeline-ForMac/releases/latest)
+[![下载量](https://img.shields.io/github/downloads/ARK-VALLEY/Today-Timeline-ForMac/total)](https://github.com/ARK-VALLEY/Today-Timeline-ForMac/releases)
 
-1. 前往 [Releases 页面](https://github.com/ARK-VALLEY/today-timeline/releases) 下载最新版 `TodayTimeline-*.zip`；
+1. 前往 [Releases 页面](https://github.com/ARK-VALLEY/Today-Timeline-ForMac/releases) 下载最新版 `TodayTimeline-*.zip`；
 2. 双击解压，把「今日时间线」拖入「应用程序」文件夹，打开即可；
 3. **首次打开若被系统拦截**（本应用为本地编译、未经 Apple 公证）：右键点应用 →「打开」→ 再点「打开」；或终端执行
    `xattr -dr com.apple.quarantine /Applications/今日时间线.app`；
